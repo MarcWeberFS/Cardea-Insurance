@@ -1,0 +1,774 @@
+window.onload = function() {
+  var modal;
+  var selectElementVersicherung = document.getElementById("insurance_type");
+
+
+  function getSelectedValue() {
+    return selectElementVersicherung.value;
+  }
+
+	function capitalizeFirstLetter(string) {
+	  if (typeof string !== 'string' || string.length === 0) {
+		return 'alle'; // Return an empty string or some default value
+	  }
+	  return string.charAt(0).toUpperCase() + string.slice(1);
+	}
+
+  selectElementVersicherung.addEventListener("change", function(event) {
+    versicherung = event.target.value;
+
+    // Clear the table container before fetching new data
+    const container = document.getElementById('table-container');
+    container.innerHTML = '';
+
+    fetch(`https://h088t2272d.execute-api.eu-north-1.amazonaws.com/prod/admin-data?value=${encodeURIComponent(getSelectedValue())}`)
+      .then(response => response.json())
+      .then(data => {
+        console.log(data);
+        const parsedData = data;
+        const table = document.createElement('table');
+        createTableHeader(table);
+        createDataRows(table, parsedData);
+
+        container.appendChild(table);
+
+        // Now that the table is populated, you can attach the filter
+        document.getElementById('search').addEventListener('input', function(event) {
+          let searchQuery = event.target.value.toLowerCase();
+          filterTable(table, searchQuery);
+        });
+      })
+      .catch(error => {
+        console.log('Error:', error);
+      });
+  });
+
+function createTableHeader(table) {
+  const headerRow = table.insertRow();
+  const headers = ['Versicherung', 'Name', 'Telefonnummer', 'Status', 'Timestamp', 'Details'];
+  headers.forEach(headerText => {
+    const header = document.createElement('th');
+    header.textContent = headerText;
+    headerRow.appendChild(header);
+  });
+}
+
+
+function createDataRows(table, parsedData) {
+  // Sort the parsedData array by timestamp in descending order
+  parsedData.sort((a, b) => {
+  const aTimestamp = new Date(a.timestamp);
+  const bTimestamp = new Date(b.timestamp);
+
+  if (!isNaN(aTimestamp) && !isNaN(bTimestamp)) {
+    return bTimestamp - aTimestamp;
+  } else if (!isNaN(aTimestamp)) {
+    return -1;
+  } else if (!isNaN(bTimestamp)) {
+    return 1;
+  } else {
+    return 0;
+  }
+});
+
+
+  parsedData.forEach((entry, index) => {
+    const row = table.insertRow();
+    row.id = `row-${index}`; // Add unique ID to each row
+	const tableName = entry.tableName ? capitalizeFirstLetter(entry.tableName) : '';
+	const values = [tableName, entry.Name_22, entry.Telefonnummer, entry.status, entry.timestamp];
+    values.forEach(value => {
+      const cell = row.insertCell();
+      cell.textContent = value;
+    });
+
+    const openButtonCell = row.insertCell();
+    const openButton = Object.assign(document.createElement('button'), { className: 'button-6' });
+    openButton.textContent = 'Open';
+    openButton.addEventListener('click', () => {
+      openModal(entry);
+    });
+    openButtonCell.appendChild(openButton);
+  });
+}
+
+
+
+function filterTable(table, searchTerm) {
+    const rows = table.getElementsByTagName('tr');
+
+    // Iterate over each row and hide/show based on the search term
+    for (let i = 1; i < rows.length; i++) { // Start from index 1 to skip the header row
+      const row = rows[i];
+      const rowData = row.textContent.toLowerCase();
+
+      if (rowData.includes(searchTerm.toLowerCase())) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    }
+  }
+
+
+
+// Function to open the modal with lead details
+function openModal(lead) {
+  // Create and display the modal
+  modal = document.createElement('div');
+  modal.classList.add('modal');
+
+  const modalContent = document.createElement('div');
+  modalContent.classList.add('modal-content');
+
+  const modalHeader = document.createElement('h1');
+
+  modalHeader.textContent = capitalizeFirstLetter(lead.tableName + ' Lead');
+  modalContent.appendChild(modalHeader);
+
+  createContactDetails(modalContent, lead);
+	/*
+  if (lead.tableName === "krankenkasse") {
+    createKrankenkasseDetails(modalContent, lead);
+  } else if (lead.tableName === "fahrzeugversicherung") {
+    createFahrzeugversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "haushaltsversicherung") {
+    createHaushaltsversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "lebensversicherung") {
+    createLebensversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "rechtsschutz") {
+    createRechtsschutzDetails(modalContent, lead);
+  } else if (lead.tableName === "reiseversicherung") {
+    createReiseversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "tierversicherung") {
+    createTierversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "gebaeudeversicherung") {
+    createGebaeudeversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "wertsachenversicherung") {
+    createWertsachenversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "handyversicherung") {
+    createHandyversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "laptopversicherung") {
+    createLaptopversicherungDetails(modalContent, lead);
+  } else if (lead.tableName === "andere") {
+    createAndereDetails(modalContent, lead);
+  }*/
+  createInsuranceDetails(modalContent, lead);
+  
+  createEditDetails(modalContent, lead);
+  
+
+  const closeButton = document.createElement('span');
+  closeButton.classList.add('close');
+  closeButton.innerHTML = '&times;';
+  closeButton.addEventListener('click', () => {
+    modal.remove();
+  });
+  modalContent.appendChild(closeButton);
+
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+
+  // Close the modal when clicked outside the content
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      modal.remove();
+    }
+  });
+}
+
+// Function to create contact details in the modal
+function createContactDetails(modalContent, lead) {
+  const contactDetailsHeader = document.createElement('h4');
+  contactDetailsHeader.textContent = 'Kontaktdaten zum Lead';
+  modalContent.appendChild(contactDetailsHeader);
+
+  const contactDetails = document.createElement('ul');
+  const contactValues = [
+    { label: 'Title', key: 'Title' },
+    { label: 'Name', key: 'Name_22' },
+    { label: 'Street', key: 'Street_30' },
+    { label: 'Hausnr', key: 'Hausnr' },
+    { label: 'PLZ', key: 'PLZ_2' },
+    { label: 'Ort', key: 'Ort_2' },
+    { label: 'Telefonnummer', key: 'Telefonnummer' },
+    { label: 'Email', key: 'Email' }
+  ];
+  contactValues.forEach(value => {
+    if (lead[value.key]) {
+      const detailItem = document.createElement('li');
+      detailItem.textContent = `${value.label}: ${lead[value.key]}`;
+      contactDetails.appendChild(detailItem);
+    }
+  });
+  modalContent.appendChild(contactDetails);
+}
+function createInsuranceDetails(modalContent, lead) {
+    const contactDetailsHeader = document.createElement('h4');
+    contactDetailsHeader.textContent = 'Versicherungsdaten zum Lead';
+    modalContent.appendChild(contactDetailsHeader);
+	const excludeKeys = ['Name_22', 'Street_30', 'tableName', 'timestamp', 'title', 'PLZ_2', 'Ort_2', 'Telefonnummer', 'Email', 'id', 'status', 'anz_anrufe', 'betrag', 'Promocode', 'angaben_zum_lead', 'fk_user_id', 'fk_fahrzeugversicherung_id', 'fk_krankenkasse_id', 'fk_hausratsversicherung_id', 'fk_rechtsschutz_id', 'fk_reiseversicherung_id', 'fk_handyversicherung_id', 'fk_laptopversicherung_id', 'fk_andere_id', 'fk_lebensversicherung_id', 'fk_tierversicherung_id', 'fk_wertsachenversicherung_id', 'Title', 'phone_number'];
+
+    const insuranceDetails = document.createElement('ul');
+
+    // Iterate through all keys in the lead object
+    for (const key in lead) {
+        // Check if the key is not in the exclude list and the value is not null
+        if (!excludeKeys.includes(key) && lead[key] !== null) {
+            const detailItem = document.createElement('li');
+            detailItem.textContent = `${key}: ${lead[key]}`;
+            insuranceDetails.appendChild(detailItem);
+        }
+    }
+
+    modalContent.appendChild(insuranceDetails);
+}
+
+
+
+
+// Function to create edit details in the modal
+function createEditDetails(modalContent, lead) {
+  const editHeader = document.createElement('h4');
+  editHeader.textContent = 'Edit Lead';
+  modalContent.appendChild(editHeader);
+
+  const editDetails = document.createElement('ul');
+  const editValues = [
+    { label: 'id', key: 'id' },
+    { label: 'timestamp', key: 'timestamp' }
+  ];
+  editValues.forEach(value => {
+    if (lead[value.key]) {
+      const detailItem = document.createElement('li');
+      detailItem.textContent = `${value.label}: ${lead[value.key]}`;
+      editDetails.appendChild(detailItem);
+    }
+  });
+  modalContent.appendChild(editDetails);
+
+  const statusDropdown = document.createElement('select');
+  statusDropdown.id = 'status-dropdown';
+  const statusLabel = document.createElement('label');
+  statusLabel.textContent = 'Status: ';
+  statusLabel.appendChild(statusDropdown);
+  const statusOptions = ['Offerte', 'Antrag', 'Vertrag', 'kein_Interesse', 'nimmt_nicht_ab'];
+  statusOptions.forEach(option => {
+    const statusOption = document.createElement('option');
+    statusOption.value = option;
+    statusOption.textContent = option;
+    if (lead.status === option) {
+      statusOption.selected = true;
+    }
+    statusDropdown.appendChild(statusOption);
+  });
+
+  const anrufeContainer = document.createElement('div');
+  anrufeContainer.classList.add('label-container');
+
+  const anrufeLabel = document.createElement('label');
+  anrufeLabel.classList.add('anrufe-label');
+  anrufeLabel.textContent = 'Anrufe:';
+  anrufeContainer.appendChild(anrufeLabel);
+
+  const anzAnrufeLabel = document.createElement('div');
+  anzAnrufeLabel.classList.add('anz-anrufe-label');
+  const anzAnrufeRadios = ['0', '1', '2', '3', '4', '5'];
+  anzAnrufeRadios.forEach(radio => {
+    const radioContainer = document.createElement('label');
+    radioContainer.classList.add('label-selection');
+
+    const radioInput = document.createElement('input');
+    radioInput.classList.add('input-selection');
+    radioInput.type = 'radio';
+    radioInput.name = 'anz-anrufe';
+    radioInput.value = radio;
+    if (lead['anz-anrufe'] === radio) {
+      radioInput.checked = true;
+    }
+
+    const radioSpan = document.createElement('span');
+    radioSpan.classList.add('button-selection');
+    radioSpan.textContent = radio;
+
+    radioContainer.appendChild(radioInput);
+    radioContainer.appendChild(radioSpan);
+
+    anzAnrufeLabel.appendChild(radioContainer);
+  });
+
+  anrufeContainer.appendChild(anzAnrufeLabel);
+
+  modalContent.appendChild(statusLabel);
+  modalContent.appendChild(anrufeContainer);
+
+  const angabenContainer = document.createElement('div');
+  
+  const uploadOfferte = document.createElement('label');
+  uploadOfferte.textContent = 'Offerte Hochladen: ';
+  angabenContainer.appendChild(uploadOfferte);
+  
+  const uploadOfferteButton = document.createElement('button');
+  uploadOfferteButton.id = 'uploadOfferteButton'; // Unique ID
+  uploadOfferteButton.textContent = 'Offerte Hochladen';
+  uploadOfferteButton.classList.add('uploadOfferteButton'); // New class
+  uploadOfferteButton.addEventListener('click', () => {
+	createPdfUploadModal(lead);
+  });
+  angabenContainer.appendChild(uploadOfferteButton);
+  
+    // Add Preis Kunde label and input
+  const preisKundeLabel = document.createElement('label');
+  preisKundeLabel.textContent = 'Betrag: ';
+  angabenContainer.appendChild(preisKundeLabel);
+
+  const preisKundeInput = document.createElement('input');
+  preisKundeInput.id = 'preis-kunde-input';
+  preisKundeInput.value = lead['betrag'] || '';
+  angabenContainer.appendChild(preisKundeInput);
+
+  // Add Police Kosten label and input
+  const provisionLabel = document.createElement('label');
+  provisionLabel.textContent = 'Provision: ';
+  angabenContainer.appendChild(provisionLabel);
+
+  const provisionInput = document.createElement('input');
+  provisionInput.id = 'provision-input';
+  provisionInput.value = lead['provision'] || '';
+  angabenContainer.appendChild(provisionInput);
+
+  angabenContainer.classList.add('angaben-container');
+
+  const angabenZumLeadLabel = document.createElement('label');
+  angabenZumLeadLabel.textContent = 'Angaben zum Lead:';
+  angabenContainer.appendChild(angabenZumLeadLabel);
+
+  const angabenZumLeadTextarea = document.createElement('textarea');
+  angabenZumLeadTextarea.id = 'angaben-zum-lead-textarea';
+  angabenZumLeadTextarea.value = lead['angaben-zum-lead'];
+  angabenZumLeadTextarea.style.height = '100px';
+  angabenContainer.appendChild(angabenZumLeadTextarea);
+
+  modalContent.appendChild(angabenContainer);
+
+  const confirmationCheckbox = document.createElement('input');
+  confirmationCheckbox.type = 'checkbox';
+  confirmationCheckbox.id = 'confirmation-checkbox';
+
+  const confirmationLabel = document.createElement('label');
+  confirmationLabel.textContent = 'VerÃƒÂ¤nderung bestÃƒÂ¤tigen ';
+  confirmationLabel.appendChild(confirmationCheckbox);
+
+  modalContent.appendChild(confirmationLabel);
+
+  const saveButton = document.createElement('button');
+  saveButton.textContent = 'Save';
+  saveButton.disabled = true; // Disable save button by default
+  saveButton.classList.add('button-5');
+  saveButton.addEventListener('click', () => {
+    saveLead(lead);
+    modal.remove();
+  });
+
+  const deleteButton = document.createElement('button');
+  deleteButton.textContent = 'Delete';
+  deleteButton.disabled = true; // Disable delete button by default
+  deleteButton.classList.add('button-4');
+  deleteButton.addEventListener('click', () => {
+    deleteLead(lead);
+    modal.remove();
+  });
+
+  const buttonContainer = document.createElement('div');
+  buttonContainer.classList.add('button-container');
+  buttonContainer.appendChild(deleteButton);
+  buttonContainer.appendChild(saveButton);
+
+  modalContent.appendChild(buttonContainer);
+
+  confirmationCheckbox.addEventListener('change', () => {
+    saveButton.disabled = !confirmationCheckbox.checked;
+    deleteButton.disabled = !confirmationCheckbox.checked;
+  });
+
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+
+  // Close the modal when clicked outside the content
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      modal.remove();
+    }
+  });
+}
+
+function createPdfUploadModal(lead) {
+	
+  let droppedElements = [];
+  let signatureWidth;
+  let xSignature;
+  let ySignature;
+  let xArea;
+  let yArea;
+  
+  // Create modal container
+  const modal = document.createElement('div');
+  modal.id = 'pdfUploadModal';
+  modal.classList.add('pdfUploadModal');
+
+  // Create modal content container
+  const modalContent = document.createElement('div');
+  modalContent.classList.add('pdfUploadModalContent');
+  modal.appendChild(modalContent);
+
+  // Close button
+  const closeButton = document.createElement('span');
+  closeButton.classList.add('pdfUploadClose');
+  closeButton.id = 'pdfUploadCloseModal';
+  closeButton.textContent = 'Ã—';
+  closeButton.addEventListener('click', () => {
+      closeModal();
+  });
+  modalContent.appendChild(closeButton);
+
+  // File input
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.id = 'pdfUploadFile';
+  fileInput.accept = '.pdf';
+	 fileInput.addEventListener('change', async function (e) {
+		if (e.target.files.length === 1 && e.target.files[0].type === 'application/pdf') {
+			let fileReader = new FileReader();
+			fileReader.onload = async function () {
+				const pdf = await pdfjsLib.getDocument(fileReader.result).promise;
+				pdfContainer.innerHTML = '';
+				for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+					const page = await pdf.getPage(pageNum);
+					const viewport = page.getViewport({ scale: 1 });
+					const canvas = document.createElement('canvas');
+					canvas.id = `page-${pageNum}`;
+					canvas.style.border = "1px solid black";
+					const ctx = canvas.getContext('2d');
+					canvas.height = viewport.height;
+					canvas.width = viewport.width;
+					const renderContext = {
+						canvasContext: ctx,
+						viewport: viewport
+					};
+					await page.render(renderContext).promise;
+					pdfContainer.appendChild(canvas);
+				}
+			};
+			fileReader.readAsDataURL(e.target.files[0]);
+		}
+	});
+  modalContent.appendChild(fileInput);
+
+  // Main container
+  const mainContainer = document.createElement('div');
+  mainContainer.classList.add('pdfUploadMainContainer');
+  modalContent.appendChild(mainContainer);
+
+  // PDF container
+  const pdfContainer = document.createElement('div');
+  pdfContainer.id = 'pdfUploadPdfContainer';
+  pdfContainer.addEventListener('dragover', function (e) {
+	e.preventDefault();
+  });
+  pdfContainer.addEventListener('drop', function (e) {
+	e.preventDefault();
+	
+		const type = e.dataTransfer.getData("type");
+		const id = e.dataTransfer.getData("id");
+		
+		console.log(type);
+		console.log(id);
+		const originalElement = document.getElementById(id);
+
+		const containerRect = this.getBoundingClientRect();
+		const x = e.clientX - containerRect.left;
+		const y = e.clientY - containerRect.top;
+		
+		console.log(x,y);
+		
+		if (id === "signatureLocation") {
+			xSignature = x;
+			ySignature = y;
+			
+			originalElement.style.position = 'absolute';
+			originalElement.style.left = x + 'px';
+			originalElement.style.top = y + 'px';
+			originalElement.style.transform = 'translate(0%, -85%)';
+
+			// Append it to the pdfContainer so it moves with the scroll
+			pdfContainer.appendChild(originalElement);
+		} else if (id === "areaLocation") {
+			xArea = x;
+			yArea = y;
+			
+			alert("Area set at", xArea + " " + yArea)
+		}
+
+		// Adjustments for fine-tuning
+		const textHorizontalAdjust = -6;
+		const textVerticalAdjust = -14;
+		let newElement;
+		let adjustedX = x - textHorizontalAdjust;
+		let adjustedY = y - textVerticalAdjust;
+
+		if (type === "INPUT") {
+			newElement = document.createElement("div");
+			newElement.textContent = originalElement.value;
+			newElement.style.position = "absolute";
+			newElement.style.left = `${adjustedX}px`;
+			newElement.style.top = `${adjustedY}px`;
+			this.appendChild(newElement);
+
+			// Determine which page the element was dropped onto
+			let droppedOnPage = null;
+			let offsetY = 0;
+			document.querySelectorAll('#pdfUploadPdfContainer canvas').forEach((canvas, index) => {
+				const canvasRect = canvas.getBoundingClientRect();
+				if (e.pageY >= canvasRect.top && e.pageY <= canvasRect.bottom) {
+					droppedOnPage = index + 1;
+					offsetY = canvasRect.top - containerRect.top;
+				}
+			});
+
+			if (droppedOnPage) {
+				droppedElements.push({
+					type: type,
+					content: originalElement.value,
+					x: adjustedX,
+					y: adjustedY - offsetY,
+					page: droppedOnPage
+				});
+			}
+		}
+  });
+  mainContainer.appendChild(pdfContainer);
+
+  // Input container
+  const inputContainer = document.createElement('div');
+  inputContainer.id = 'pdfUploadInputContainer';
+  mainContainer.appendChild(inputContainer);
+  	
+  // Description paragraph
+  const descriptionParagraph = document.createElement('p');
+  descriptionParagraph.textContent = 'Drag and Drop isch de start punkt une links. FÃ¼r neue text, in bestehendes Feld schriebe.';
+  inputContainer.appendChild(descriptionParagraph);
+  
+	// Name and Nachname combined input field
+  const fullNameInput = document.createElement('input');
+  fullNameInput.type = 'text';
+  fullNameInput.id = 'pdfUploadFullName';
+  fullNameInput.placeholder = 'Full Name';
+  fullNameInput.value = `${lead.Name_22|| 'Random'}`;
+  fullNameInput.draggable = true;
+  fullNameInput.addEventListener('dragstart', function (e) {
+			e.dataTransfer.setData("type", fullNameInput.tagName);
+			e.dataTransfer.setData("id", fullNameInput.id);
+		});
+  inputContainer.appendChild(fullNameInput);
+
+  // Input fields
+  const inputFields = [
+	{ id: 'pdfUploadAddress', placeholder: 'Street', key: 'Street_30' },
+	{ id: 'pdfUploadStrasseNr', placeholder: 'Hausnr', key: 'Hausnr' },
+	{ id: 'pdfUploadPhone', placeholder: 'Telefonnummer', key: 'Telefonnummer' },
+	{ id: 'pdfUploadEmail', placeholder: 'Email', key: 'Email' },
+	{ id: 'pdfUploadDate', placeholder: 'Date', key: 'timestamp' },
+	{ id: 'pdfUploadOrt', placeholder: 'Ort', key: 'Ort_2' }
+  ];
+
+  inputFields.forEach(field => {
+	const input = document.createElement('input');
+	input.type = 'text';
+	input.id = field.id;
+	input.placeholder = field.placeholder;
+	input.value = lead[field.key] || `Random ${field.placeholder}`;
+	input.draggable = true;
+	  input.addEventListener('dragstart', function (e) {
+			e.dataTransfer.setData("type", input.tagName);
+			e.dataTransfer.setData("id", input.id);
+		});
+		
+	inputContainer.appendChild(input);
+  });
+  
+  	const signatureLocation = document.createElement('input');
+	signatureLocation.type = 'text';
+	signatureLocation.id = 'signatureLocation';
+	signatureLocation.placeholder = 'Signature';
+	signatureLocation.style.background = 'lightgreen';
+	signatureLocation.draggable = true;
+	signatureLocation.style.width= '155px'; 
+	signatureLocation.addEventListener('dragstart', function (e) {
+		e.dataTransfer.setData("type", signatureLocation.tagName);
+		e.dataTransfer.setData("id", signatureLocation.id);
+	});
+	inputContainer.appendChild(signatureLocation);
+	
+	
+	const slider = document.createElement('input');
+	slider.type = 'range';
+	slider.min = '50';  // Minimum width
+	slider.max = '300'; // Maximum width
+	slider.value = '155'; // Initial value, matching initial width of signatureLocation
+
+	// Add event listener to the slider
+	slider.addEventListener('input', function() {
+		const newWidth = slider.value;
+		signatureWidth = slider.value;
+		const newHeight = (2 / 5) * newWidth;
+		signatureLocation.style.width = newWidth + 'px';
+		signatureLocation.style.height = newHeight + 'px';
+	});
+
+	// Append the slider to your container
+	inputContainer.appendChild(slider);
+
+	// Set initial height of the signatureLocation based on initial width
+	signatureLocation.style.height = (2 / 5) * signatureLocation.style.width;
+	
+	
+	const areaLocation = document.createElement('input');
+	areaLocation.type = 'text';
+	areaLocation.id = 'areaLocation';
+	areaLocation.placeholder = 'Area';
+	areaLocation.style.background = 'lightgreen';
+	areaLocation.draggable = true;
+	areaLocation.addEventListener('dragstart', function (e) {
+		e.dataTransfer.setData("type", areaLocation.tagName);
+		e.dataTransfer.setData("id", areaLocation.id);
+	});
+	inputContainer.appendChild(areaLocation);
+
+  // Save button
+  const saveButton = document.createElement('button');
+  saveButton.id = 'pdfUploadSaveButton';
+  saveButton.textContent = 'Save PDF';
+      saveButton.addEventListener('click', async function () {
+        const pdfFile = document.getElementById('pdfUploadFile').files[0];
+		if (!pdfFile) {
+			alert("No PDF selected.");
+			return;
+		}
+		if (!xArea) {
+			alert("No Area Location Defined.");
+			return;
+		}
+		if (!xSignature) {
+			alert("No Signature Location Defined");
+			return;
+		}
+		const arrayBuffer = await pdfFile.arrayBuffer();
+		const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+		const textHorizontalAdjust = 1;
+		const textVerticalAdjust = 6;
+
+		for (const element of droppedElements) {
+			const pageIndex = element.page - 1;
+			const page = pdfDoc.getPages()[pageIndex];
+			const pageHeight = page.getSize().height;
+
+			let adjustedX = element.x - textHorizontalAdjust;
+			let adjustedY = pageHeight - (element.y - textVerticalAdjust);
+
+			page.drawText(element.content, {
+				x: adjustedX,
+				y: adjustedY,
+				size: 12,
+				color: PDFLib.rgb(0, 0, 0)
+			});
+		}
+
+		const pdfBytes = await pdfDoc.save();
+		const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+		const reader = new FileReader();
+		reader.onloadend = function() {
+			uploadOfferPDF(lead, reader.result)
+			var modalUploadPDF = document.getElementById("pdfUploadModal");
+			modalUploadPDF.style.display = "none";
+			uploadOfferteButton.innerText = "Offerte Hochgeladen";
+		};
+		reader.readAsDataURL(pdfBlob);
+    });
+  modalContent.appendChild(saveButton);
+
+  // Append the modal to the document body or a specific container
+  document.body.appendChild(modal);
+  
+  openPDFUploadModal();
+  
+  
+
+
+// Get the button that opens the modal
+var uploadOfferteButton = document.getElementById("uploadOfferteButton");
+
+// Get the <span> element that closes the modal
+var span = document.getElementById("pdfUploadCloseModal");
+
+// When the user clicks on the button, open the modal
+function openPDFUploadModal() {
+	var modalUploadPDF = document.getElementById("pdfUploadModal");
+	modalUploadPDF.style.display = "block";
+}
+
+// When the user clicks on <span> (x), close the modal
+function closeModal() {
+	var modalUploadPDF = document.getElementById("pdfUploadModal");
+	modalUploadPDF.style.display = "none";
+}
+
+
+async function uploadOfferPDF(lead, base64PDF) {
+    const url = 'https://h088t2272d.execute-api.eu-north-1.amazonaws.com/prod/uploadOfferMandate';
+	
+	lead.xArea = xArea;
+	lead.yArea = yArea;
+	lead.xSignature = xSignature;
+	lead.ySignature = ySignature;
+	lead.signatureWidth = signatureWidth;
+
+    const body = {
+        lead: JSON.stringify(lead),
+        base64PDF: JSON.stringify(base64PDF)
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Success:', data);
+        return data;
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+
+document.addEventListener('DOMContentLoaded', function () {
+	// Set the date input to today's date
+	const today = new Date();
+	const day = String(today.getDate()).padStart(2, '0');
+	const month = String(today.getMonth() + 1).padStart(2, '0');
+	const year = today.getFullYear();
+	const formattedDate = `${day}-${month}-${year}`;
+	document.getElementById('pdfUploadDate').value = formattedDate;
+	
+});
+}
+
+};

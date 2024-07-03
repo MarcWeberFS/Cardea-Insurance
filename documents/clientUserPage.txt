@@ -1,0 +1,583 @@
+
+window.onload = async function() {
+    const token = sessionStorage.getItem('accessToken');
+    function jwtDecode(token) {
+      var base64Url = token.split('.')[1];
+      var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+
+      return JSON.parse(jsonPayload);
+    }
+	const userId = jwtDecode(token).sub;
+  const apiUrl = "https://psk39h1hij.execute-api.eu-north-1.amazonaws.com/prod/getformsubmissionsforuserid";
+  const requestOptions = {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  };
+  
+  try {
+    const response = await fetch(apiUrl, requestOptions);
+    const data = await response.json();
+    createTable(data);
+  } catch(error) {
+    console.error("Error fetching data:", error);
+  }
+}
+
+function createTable(data) {
+  const ul = document.createElement('ul');
+  ul.className = "responsive-table"; 
+
+  // Header
+  const headerLi = document.createElement('li');
+  headerLi.className = "table-header";
+  const headers = ['Versicherung', 'Status', 'Kosten', 'Vertrag'];
+  headers.forEach(header => {
+    const div = document.createElement('div');
+    div.textContent = header;
+    headerLi.appendChild(div);
+  });
+  ul.appendChild(headerLi);
+
+  // Data rows
+  data.forEach(item => {
+	  
+	  
+	console.log(item);
+	  
+	  
+	  
+    const li = document.createElement('li');
+    li.className = "table-row";
+
+    let tableName = null;
+    for (const key in item) {
+      if (key.startsWith('fk_') && key.endsWith('_id') && item[key] !== null && key !== 'fk_user_id') { 
+        tableName = key.slice(3, -3); // Remove 'fk_' and '_id'
+        break; 
+      }
+    }
+    if (tableName === null) { 
+      tableName = 'Unknown'; // If no foreign key is found
+    }
+
+    const divTableName = document.createElement('div');
+    divTableName.className = "col-1"; 
+    divTableName.textContent = tableName;
+    li.appendChild(divTableName);
+
+    const divStatus = document.createElement('div');
+    divStatus.className = "col-2";
+    divStatus.textContent = item.status;
+    li.appendChild(divStatus);
+
+    const divPreisKunde = document.createElement('div');
+    divPreisKunde.className = "col-3";
+    divPreisKunde.textContent = item.betrag || '-';
+    li.appendChild(divPreisKunde);
+
+		/*
+    const divButton = document.createElement('div');
+    divButton.className = "col-4";
+    const button = document.createElement('button');
+    button.className = "button-4";
+    button.textContent = 'Weitere Angaben';
+    button.dataset.item = JSON.stringify(item);
+    button.onclick = openModal;
+    divButton.appendChild(button);
+    li.appendChild(divButton);*/
+    
+	const divButtonPolicy = document.createElement('div');
+	divButtonPolicy.className = "col-4";
+	const buttonPolicy = document.createElement('button');
+	buttonPolicy.textContent = 'Vertrag Einsehen';
+	buttonPolicy.dataset.item = JSON.stringify(item);
+
+	// Conditionally disable and style based on item.status
+	if (item.status === 'Offerte') { 
+	  buttonPolicy.disabled = true;
+	  buttonPolicy.classList.add('disabled-button'); // Add a CSS class for styling
+	} else {
+		buttonPolicy.className = "button-34"; 
+	}
+
+	divButtonPolicy.appendChild(buttonPolicy);
+	li.appendChild(divButtonPolicy);
+
+	// Assign the buttonPolicy function as the onclick event handler
+	buttonPolicy.onclick = buttonPolicyHandler; // Renamed to buttonPolicyHandler
+	divButtonPolicy.appendChild(buttonPolicy);
+	li.appendChild(divButtonPolicy);
+
+    ul.appendChild(li);
+  });
+
+  document.getElementById('table-container').appendChild(ul);
+}
+
+function buttonPolicyHandler(event) {
+var html = `
+    <div id="myModal" style="display: none;">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">PDF Viewer</h5>
+                    <button type="button" class="close" id="closeModal" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <center>
+                        <div class="pdf-title">Versicherungs Offerte</div>
+                        <div id="pdfContainer" class="pdf-container"></div>
+                        <div class="pdf-title" id="mandatTitle">Mandat</div>
+                        <div id="mandatContainer" class="pdf-container"></div>
+                        
+                        <div class="checkbox-container form-check">
+                            <input type="checkbox" class="form-check-input" id="signMandate" name="signMandate" checked>
+                            <label class="form-check-label" for="signMandate">Mandat Mitunterzeichnen</label>
+                        </div>
+                        
+                        <div id="signature-area" class="mt-3">
+                            <label id="errorSignature" class="text-danger" style="display:none;">Bitte unterschreibe hier!</label>
+                            <canvas id="signatureCanvas" class="border border-dark" width="500" height="200"></canvas>
+                            <br>
+                            <button id="clearBtn" class="btn btn-secondary mt-2">Clear</button>
+                            <button id="saveBtn" class="btn btn-success mt-2">Save</button>
+                        </div>
+                    </center>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.innerHTML += html;
+    
+    var modal = document.getElementById("myModal");
+    var btn = document.getElementById("myBtn");
+    var span = document.getElementById("closeModal");
+	modal.style.display = "block";
+
+	lead = JSON.parse(event.target.dataset.item);
+	setPolicies(lead);
+
+    span.onclick = function() {
+        modal.style.display = "none";
+    };
+
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    };
+
+		function setPolicies(lead) {
+			modal.style.display = "block";
+
+			const base64OfferteString = lead?.pdfOfferteBase64 ?? null;
+			const base64MandatString = lead?.pdfMandatBase64 ?? null;
+
+
+			if (base64OfferteString) {
+				loadPdfFromBase64(base64OfferteString, 'pdfContainer');
+			}
+
+			if (base64MandatString) {
+				loadPdfFromBase64(base64MandatString, 'mandatContainer');
+			}
+
+        setupCanvas();
+    };
+
+        // Modify loadPdfFromBase64 to accept container ID
+        async function loadPdfFromBase64(base64, containerId) {
+            const pdfBlob = base64ToBlob(base64, 'application/pdf');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+
+            const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+            const pdfContainer = document.getElementById(containerId);
+            pdfContainer.innerHTML = ''; // Clear existing content
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1 });
+                const canvas = document.createElement('canvas');
+                canvas.style.border = "1px solid black";
+                const ctx = canvas.getContext('2d');
+                
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                await page.render(renderContext).promise;
+                pdfContainer.appendChild(canvas);
+            }
+        }
+
+		function base64ToBlob(base64, mimeType) {
+			try {
+				// Remove base64 URL prefix if present
+				const base64WithoutPrefix = base64.split(',')[1] || base64;
+
+				// Decode base64 string
+				const byteCharacters = atob(base64WithoutPrefix);
+
+				// Convert decoded string to bytes
+				const byteNumbers = new Array(byteCharacters.length);
+				for (let i = 0; i < byteCharacters.length; i++) {
+					byteNumbers[i] = byteCharacters.charCodeAt(i);
+				}
+				const byteArray = new Uint8Array(byteNumbers);
+
+				// Create and return a Blob object
+				return new Blob([byteArray], {type: mimeType});
+			} catch (e) {
+				console.error('Error in base64ToBlob: ', e);
+				return null;
+			}
+		}
+
+        document.getElementById('signMandate').addEventListener('change', function() {
+            var pdfContainer2 = document.getElementById('mandatContainer');
+            var secondDocTitle = document.getElementById('mandatTitle');
+
+            if (this.checked) {
+                pdfContainer2.style.display = '';
+                secondDocTitle.style.display = '';
+            } else {
+                pdfContainer2.style.display = 'none';
+                secondDocTitle.style.display = 'none';
+            }
+        });
+		
+		const canvas = document.getElementById('signatureCanvas');
+		const ctx = canvas.getContext('2d');
+		const saveBtn = document.getElementById('saveBtn');
+
+		//saveBtn.disabled = true;
+		let drawing = false;
+		let hasDrawn = false;
+
+		function isMobileDevice() {
+			return (typeof window.orientation !== "undefined") || (navigator.userAgent.indexOf('IEMobile') !== -1);
+		};
+
+		const dpr = isMobileDevice() ? window.devicePixelRatio || 1 : 1;
+
+		canvas.width = canvas.offsetWidth * dpr;
+		canvas.height = canvas.offsetHeight * dpr;
+		ctx.scale(dpr, dpr);
+
+		canvas.addEventListener('mousedown', () => {
+			drawing = true;
+			ctx.beginPath();
+		});
+
+		canvas.addEventListener('mouseup', () => {
+			drawing = false;
+		});
+
+		canvas.addEventListener('mousemove', draw);
+
+		canvas.addEventListener('touchstart', (e) => {
+			e.preventDefault();  // Prevent default touch behavior
+			drawing = true;
+			ctx.beginPath();
+			draw(e.touches[0]);
+		});
+
+		canvas.addEventListener('touchmove', (e) => {
+			e.preventDefault();  // Prevent default touch behavior
+			draw(e.touches[0]);
+		});
+
+		canvas.addEventListener('touchend', () => {
+			drawing = false;
+		});
+
+
+
+		function draw(e) {
+			if (!drawing) return;
+
+			let x, y;
+
+			// Check if it's a touch event
+			if (e.touches) {
+				x = e.touches[0].clientX - canvas.getBoundingClientRect().left;
+				y = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+			} else {  // If it's a mouse event
+				x = e.clientX - canvas.getBoundingClientRect().left;
+				y = e.clientY - canvas.getBoundingClientRect().top;
+			}
+
+			ctx.lineWidth = 5;
+			ctx.lineCap = 'round';
+			ctx.strokeStyle = 'black';
+
+			ctx.lineTo(x, y);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.moveTo(x, y);
+			
+			if (!hasDrawn) {
+				hasDrawn = true;
+				saveBtn.disabled = false; // Enable the save button
+			}
+		}
+
+		document.getElementById('clearBtn').addEventListener('click', () => {
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			hasDrawn = false;
+			saveBtn.disabled = true;
+		});
+
+
+		let signatureData = '';  // This variable will store the signature data
+
+		async function getIPAddress() {
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                return data.ip;
+            } catch (error) {
+                console.error('Error fetching IP address:', error);
+                return 'Unknown IP';
+            }
+        }
+
+        async function getLocationByIP(ip) {
+            const ACCESS_TOKEN = 'b6fae8fa837a84'; // Replace with your access token from ipinfo.io
+            const apiUrl = `https://ipinfo.io/${ip}?token=${ACCESS_TOKEN}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                return await response.json();
+            } catch (error) {
+                console.error("Error fetching location:", error);
+                return null;
+            }
+        }
+
+        async function fetchLocationData() {
+            const ip = await getIPAddress(); // Await the resolution of getIPAddress
+            const locationData = await getLocationByIP(ip); // Now pass the actual IP string
+            console.log(locationData.city); // Log or use the location data as needed
+            return locationData;
+        }
+
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Fetching data...';
+
+            try {
+                const locationData = await fetchLocationData();
+                if (locationData) {
+                    resultDiv.innerHTML = `IP: ${locationData.ip}<br>Location: ${locationData.city}, ${locationData.region}, ${locationData.country}`;
+                } else {
+                    resultDiv.innerHTML = 'Failed to fetch location data.';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        });
+
+		function extendCanvasHeight(extraHeight) {
+			// Store current canvas content
+			const tempCanvas = document.createElement('canvas');
+			const tempCtx = tempCanvas.getContext('2d');
+			tempCanvas.width = canvas.width;
+			tempCanvas.height = canvas.height;
+			tempCtx.drawImage(canvas, 0, 0);
+
+			// Extend the canvas height
+			canvas.height += extraHeight;
+
+			// Restore the canvas content
+			ctx.drawImage(tempCanvas, 0, 0);
+		}
+		
+		function setupCanvas() {
+			const canvas = document.getElementById('signatureCanvas');
+			if (!canvas) return;
+
+			const isMobileDevice = () => {
+				return (typeof window.orientation !== "undefined") || (navigator.userAgent.indexOf('IEMobile') !== -1);
+			};
+
+			const dpr = isMobileDevice() ? window.devicePixelRatio || 1 : 1;
+
+			canvas.width = 500;
+			canvas.height = 200;
+
+			const ctx = canvas.getContext('2d');
+			ctx.scale(dpr, dpr);
+		}
+		
+	document.getElementById('saveBtn').addEventListener('click', async () => {
+		if (hasDrawn === false) {
+			document.getElementById('errorSignature').style.display = 'block';
+			return;
+		}
+
+		// Fetch IP address
+		const ipAddress = await getIPAddress();
+		// Get current timestamp
+		const timestamp = new Date().toLocaleString();
+		extendCanvasHeight(30);
+		// Draw IP and timestamp on the canvas
+		ctx.font = '10px Arial';
+		ctx.fillStyle = 'black';
+		ctx.fillText(`IP: ${ipAddress} - ${timestamp}`, 10, canvas.height - 10);
+		
+		// Save the canvas drawing to a variable
+		signatureData = canvas.toDataURL();
+
+        const offertePromise = writeSignatureOnPdf(lead.xSignature.N, lead.ySignature.N, lead.signatureWidth.S, lead.xArea.N, lead.yArea.N, signatureData, lead.pdfOfferteBase64);
+        const mandatPromise = writeSignatureOnPdf(282, 185, 155, 58, 190, signatureData, lead.pdfMandatBase64);
+        
+        const offerte = await offertePromise;
+        const mandat = await mandatPromise;
+
+		const signMandateChecked = document.getElementById('signMandate').checked;
+		
+		// Create the body for the API call
+		let requestBody = {...lead}; // clone the lead object
+		
+
+		if (signMandateChecked === true) {
+			requestBody.offerte = offerte;
+			requestBody.mandat = mandat;
+		} else {
+			requestBody.offerte = offerte;
+		}
+		
+		delete requestBody.pdfOfferteBase64; // remove pdfOfferteBase64 if exists
+		delete requestBody.pdfMandatBase64; // remove pdfMandatBase64 if exists
+		
+
+		// API endpoint
+		const apiUrl = 'https://psk39h1hij.execute-api.eu-north-1.amazonaws.com/prod/customerSigning';
+		
+		try {
+			const response = await fetch(apiUrl, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(requestBody)
+			});
+
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			// Handle the response here
+			const jsonResponse = await response.json();
+			console.log('Response from server:', jsonResponse);
+			// Additional logic after successful submission
+		} catch (error) {
+			console.error('Error sending signature data:', error);
+		}
+		modal.style.display = "none";
+	});
+	
+	async function writeSignatureOnPdf(xSignature, ySignature, offerSignatureWidth, xArea, yArea, signature, base64pdf) {
+		const pdfDoc = await PDFLib.PDFDocument.load(base64pdf);
+		const fontSize = 14;
+
+		// Fetch location data
+		const locationData = await fetchLocationData();
+		const city = locationData ? `${locationData.city},` : "unknown,";
+		const currentDate = new Date();
+		const dateString = currentDate.toLocaleDateString('de-DE', {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit'
+		});
+
+		const area = city + " " + dateString;
+		let signatureWidth = 155;
+		const pages = pdfDoc.getPages();
+		const pageHeight = pages[0].getHeight();
+		const pageIndex = Math.floor(ySignature / pageHeight);
+
+		if (pageIndex < 0 || pageIndex >= pages.length) {
+			console.error("The coordinates are not within the page range of the PDF.");
+			return;
+		}
+
+		const selectedPage = pages[pageIndex];
+
+		// Check if drawText method exists
+		if (typeof selectedPage.drawText !== 'function') {
+			console.error("drawText method not found on the selected page.");
+			return;
+		}
+		
+		let ySignaturePositionOnPage = ySignature % pageHeight;
+		let yAreaPositionOnPage = yArea % pageHeight;
+		
+		if (pageIndex > 0) {
+			ySignaturePositionOnPage = pageHeight - ySignaturePositionOnPage;
+			yAreaPositionOnPage =  pageHeight - yAreaPositionOnPage
+			signatureWidth = offerSignatureWidth;
+		}
+
+
+		// Add text (location and date)
+		selectedPage.drawText(area, { x: Math.round(xArea), y: Math.round(yAreaPositionOnPage), size: fontSize });
+
+		// Add signature image
+		const signatureImage = await pdfDoc.embedPng(signature);
+		const signatureHeight = signatureImage.height * (signatureWidth / signatureImage.width);
+		selectedPage.drawImage(signatureImage, { x: Math.round(xSignature), y: Math.round(ySignaturePositionOnPage), width: Number(signatureWidth), height: signatureHeight });
+
+		// Serialize the modified PDF to base64
+		const pdfBytes = await pdfDoc.saveAsBase64({ dataUri: true });
+		return pdfBytes;
+	}
+
+}
+
+
+function openModal(event) {
+  const lead = JSON.parse(event.target.dataset.item);
+  const modalBody = document.getElementById('modal-body');
+
+  if (lead.tableName.S === "krankenkasse") {
+    createKrankenkasseDetails(modalBody, lead);
+  } else if (lead.tableName.S === "fahrzeugversicherung") {
+    createFahrzeugversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "haushaltsversicherung") {
+    createHaushaltsversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "lebensversicherung") {
+    createLebensversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "rechtsschutz") {
+    createRechtsschutzDetails(modalBody, lead);
+  } else if (lead.tableName.S === "reiseversicherung") {
+    createReiseversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "tierversicherung") {
+    createTierversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "gebaeudeversicherung") {
+    createGebaeudeversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "wertsachenversicherung") {
+    createWertsachenversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "handyversicherung") {
+    createHandyversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "laptopversicherung") {
+    createLaptopversicherungDetails(modalBody, lead);
+  } else if (lead.tableName.S === "andere") {
+    createAndereDetails(modalBody, lead);
+  }
+
+  document.getElementById('myModal').style.display = "block";
+}
+
+// Replace this function with the real function for creating krankenkasse details
+function createKrankenkasseDetails(modalBody, lead) {
+  modalBody.textContent = JSON.stringify(lead, null, 2);
+}
